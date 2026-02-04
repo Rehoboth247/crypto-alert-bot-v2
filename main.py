@@ -134,16 +134,24 @@ def get_next_poll_time() -> datetime:
     """
     now = datetime.now()
     today = now.date()
-    
-    # Check each poll time for today
-    for hour in POLL_TIMES:
-        poll_time = datetime.combine(today, dt_time(hour=hour, minute=0, second=0))
-        if poll_time > now:
-            return poll_time
-    
-    # All poll times for today have passed, return first poll time tomorrow
     tomorrow = today + timedelta(days=1)
-    return datetime.combine(tomorrow, dt_time(hour=POLL_TIMES[0], minute=0, second=0))
+    
+    # Build list of all upcoming poll times (today and tomorrow)
+    upcoming_times = []
+    
+    for hour in POLL_TIMES:
+        # Today's poll time
+        poll_time_today = datetime.combine(today, dt_time(hour=hour, minute=0, second=0))
+        if poll_time_today > now:
+            upcoming_times.append(poll_time_today)
+        
+        # Tomorrow's poll time (for wrap-around)
+        poll_time_tomorrow = datetime.combine(tomorrow, dt_time(hour=hour, minute=0, second=0))
+        upcoming_times.append(poll_time_tomorrow)
+    
+    # Sort and return the earliest future time
+    upcoming_times.sort()
+    return upcoming_times[0] if upcoming_times else datetime.combine(tomorrow, dt_time(hour=POLL_TIMES[0], minute=0, second=0))
 
 
 async def run_check() -> None:
