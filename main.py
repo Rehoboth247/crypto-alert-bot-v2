@@ -25,7 +25,9 @@ from price_tracker import check_all_price_movements
 
 # Configuration
 POLL_INTERVAL_HOURS = 2  # Poll every 2 hours (12 times per day)
-POLL_TIMES = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22]  # Every 2 hours
+# Poll times in UTC that correspond to even hours in WAT (UTC+1)
+# WAT 00:00=UTC 23:00, WAT 02:00=UTC 01:00, etc.
+POLL_TIMES = [23, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21]  # Every 2 hours (WAT aligned)
 
 # Track the last reset date
 last_reset_date = None
