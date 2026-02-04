@@ -35,6 +35,8 @@ def init_db() -> None:
             chain TEXT,
             liquidity_usd REAL,
             market_cap REAL,
+            alert_price REAL DEFAULT 0,
+            milestones_hit TEXT DEFAULT '',
             first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             alerted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -45,6 +47,17 @@ def init_db() -> None:
         CREATE INDEX IF NOT EXISTS idx_token_address 
         ON seen_tokens(token_address)
     """)
+    
+    # Add new columns if they don't exist (for existing databases)
+    try:
+        cursor.execute("ALTER TABLE seen_tokens ADD COLUMN alert_price REAL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    try:
+        cursor.execute("ALTER TABLE seen_tokens ADD COLUMN milestones_hit TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
     
     conn.commit()
     conn.close()
@@ -81,7 +94,8 @@ def mark_token_seen(
     name: str = "",
     chain: str = "",
     liquidity_usd: float = 0,
-    market_cap: float = 0
+    market_cap: float = 0,
+    alert_price: float = 0
 ) -> None:
     """
     Mark a token as seen/alerted in the database.
@@ -93,6 +107,7 @@ def mark_token_seen(
         chain: Blockchain (e.g., "solana").
         liquidity_usd: Liquidity in USD.
         market_cap: Market cap in USD.
+        alert_price: Price at time of alert (for tracking).
     """
     conn = get_connection()
     cursor = conn.cursor()
@@ -100,15 +115,16 @@ def mark_token_seen(
     try:
         cursor.execute("""
             INSERT OR IGNORE INTO seen_tokens 
-            (token_address, symbol, name, chain, liquidity_usd, market_cap)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (token_address, symbol, name, chain, liquidity_usd, market_cap, alert_price, milestones_hit)
+            VALUES (?, ?, ?, ?, ?, ?, ?, '')
         """, (
             token_address.lower(),
             symbol,
             name,
             chain,
             liquidity_usd,
-            market_cap
+            market_cap,
+            alert_price
         ))
         
         conn.commit()
@@ -193,6 +209,69 @@ def get_recent_tokens(limit: int = 10) -> list[dict]:
         }
         for row in rows
     ]
+
+
+def get_tokens_for_price_tracking() -> list[dict]:
+    """
+    Get all tokens with alert prices for price movement tracking.
+    
+    Returns:
+        List of tokens with their alert prices and milestones already hit.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT token_address, symbol, name, chain, alert_price, milestones_hit
+        FROM seen_tokens
+        WHERE alert_price > 0
+    """)
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [
+        {
+            "token_address": row[0],
+            "symbol": row[1],
+            "name": row[2],
+            "chain": row[3],
+            "alert_price": row[4],
+            "milestones_hit": row[5] or ""
+        }
+        for row in rows
+    ]
+
+
+def update_milestone_hit(token_address: str, milestone: str) -> None:
+    """
+    Record that a price milestone was hit for a token.
+    
+    Args:
+        token_address: Token contract address.
+        milestone: Milestone identifier (e.g., "2x", "5x", "10x", "-50%").
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Get current milestones
+    cursor.execute(
+        "SELECT milestones_hit FROM seen_tokens WHERE token_address = ?",
+        (token_address.lower(),)
+    )
+    row = cursor.fetchone()
+    
+    if row:
+        current = row[0] or ""
+        if milestone not in current:
+            new_milestones = f"{current},{milestone}" if current else milestone
+            cursor.execute(
+                "UPDATE seen_tokens SET milestones_hit = ? WHERE token_address = ?",
+                (new_milestones, token_address.lower())
+            )
+            conn.commit()
+    
+    conn.close()
 
 
 # Initialize database on module import

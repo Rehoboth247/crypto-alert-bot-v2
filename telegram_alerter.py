@@ -145,3 +145,68 @@ async def send_startup_message() -> bool:
     except Exception as e:
         print(f"[TelegramAlerter] Failed to send startup message: {e}")
         return False
+
+
+async def send_price_movement_alert(alert: dict) -> bool:
+    """
+    Send a follow-up alert when a token hits a price milestone.
+    
+    Args:
+        alert: Dict with milestone info (type, milestone, token, prices).
+        
+    Returns:
+        True if message sent successfully, False otherwise.
+    """
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return False
+    
+    token = alert.get("token", {})
+    symbol = token.get("symbol", "???")
+    name = token.get("name", "Unknown")
+    chain = token.get("chain", "").upper()
+    alert_price = alert.get("alert_price", 0)
+    current_price = alert.get("current_price", 0)
+    milestone = alert.get("milestone", "")
+    change_percent = alert.get("change_percent", 0)
+    alert_type = alert.get("type", "")
+    
+    # Choose emoji based on type
+    if alert_type == "gain":
+        emoji = "🚀" if milestone in ["5x", "10x"] else "📈"
+        header = f"{emoji} {milestone} ALERT: {name} (${symbol})"
+    else:
+        emoji = "🔻"
+        header = f"{emoji} DUMP ALERT: {name} (${symbol})"
+    
+    # Format prices
+    def format_price(p):
+        if p >= 1:
+            return f"${p:.4f}"
+        elif p >= 0.0001:
+            return f"${p:.6f}"
+        else:
+            return f"${p:.10f}"
+    
+    message = f"""{header}
+⛓️ Chain: {chain}
+
+📊 Alert Price: {format_price(alert_price)}
+📊 Current Price: {format_price(current_price)}
+{'🟢' if change_percent >= 0 else '🔴'} Change: {change_percent:+.1f}%
+
+🎯 Milestone: {milestone}
+"""
+    
+    try:
+        bot = Bot(token=TELEGRAM_BOT_TOKEN)
+        await bot.send_message(
+            chat_id=TELEGRAM_CHAT_ID,
+            text=message,
+            disable_web_page_preview=True
+        )
+        print(f"[TelegramAlerter] {milestone} alert sent for {symbol}")
+        return True
+        
+    except Exception as e:
+        print(f"[TelegramAlerter] Error sending price alert: {e}")
+        return False

@@ -19,8 +19,9 @@ load_dotenv()
 # Using scraper instead of API for complete data
 from dex_scraper import get_new_filtered_tokens, get_token_info, save_token_to_db
 from narrative_analyzer import analyze_token_narrative
-from telegram_alerter import send_alert, send_startup_message
+from telegram_alerter import send_alert, send_startup_message, send_price_movement_alert
 from token_db import get_seen_count, clear_all_tokens
+from price_tracker import check_all_price_movements
 
 # Configuration
 POLL_INTERVAL_HOURS = 4  # Poll every 4 hours (6 times per day)
@@ -144,12 +145,13 @@ def get_next_poll_time() -> datetime:
 
 
 async def run_check() -> None:
-    """Run a single check for new tokens."""
+    """Run a single check for new tokens and price movements."""
     print(f"\n[Main] {'='*40}")
     print(f"[Main] Checking for new tokens at {datetime.now().strftime('%H:%M:%S')}")
     print(f"[Main] {'='*40}")
     
     try:
+        # Check for new tokens
         new_tokens = get_new_filtered_tokens()
         
         if new_tokens:
@@ -161,6 +163,14 @@ async def run_check() -> None:
                 await asyncio.sleep(5)
         else:
             print(f"[Main] No new tokens matching criteria")
+        
+        # Check price movements on previously alerted tokens
+        print(f"\n[Main] Checking price movements on tracked tokens...")
+        price_alerts = await check_all_price_movements()
+        
+        for alert in price_alerts:
+            await send_price_movement_alert(alert)
+            await asyncio.sleep(1)
         
         # Show database stats
         seen_count = get_seen_count()

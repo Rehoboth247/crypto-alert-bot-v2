@@ -288,6 +288,7 @@ def get_token_info(enriched_data: dict) -> dict:
     volume_24h = pair.get("volume", {}).get("h24", 0) or 0
     price_change_24h = pair.get("priceChange", {}).get("h24", 0) or 0
     price_change_6h = pair.get("priceChange", {}).get("h6", 0) or 0
+    price_usd = float(pair.get("priceUsd", 0) or 0)
     
     # Get Twitter
     twitter_url = None
@@ -308,18 +309,20 @@ def get_token_info(enriched_data: dict) -> dict:
         "volume_24h": volume_24h,
         "price_change_24h": price_change_24h,
         "price_change_6h": price_change_6h,
+        "price_usd": price_usd,
         "dexscreener_url": profile.get("url", ""),
         "description": "",
     }
 
 
 def save_token_to_db(token_info: dict) -> None:
-    """Save token to database."""
+    """Save token to database with alert price for tracking."""
     mark_token_seen(
         token_address=token_info.get("address", ""),
         symbol=token_info.get("symbol", ""),
         name=token_info.get("name", ""),
         chain=token_info.get("chain", ""),
         liquidity_usd=token_info.get("liquidity_usd", 0),
-        market_cap=token_info.get("market_cap", 0)
+        market_cap=token_info.get("market_cap", 0),
+        alert_price=token_info.get("price_usd", 0)
     )
