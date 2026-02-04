@@ -24,8 +24,8 @@ from token_db import get_seen_count, clear_all_tokens
 from price_tracker import check_all_price_movements
 
 # Configuration
-POLL_INTERVAL_HOURS = 4  # Poll every 4 hours (6 times per day)
-POLL_TIMES = [0, 4, 8, 12, 16, 20]  # Fixed times: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00
+POLL_INTERVAL_HOURS = 2  # Poll every 2 hours (12 times per day)
+POLL_TIMES = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22]  # Every 2 hours
 
 # Track the last reset date
 last_reset_date = None
