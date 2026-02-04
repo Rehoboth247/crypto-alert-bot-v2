@@ -1,0 +1,208 @@
+"""
+Crypto Alert Bot - Main Entry Point
+
+Monitors Dexscreener for new tokens every 4 hours (6 times per day),
+analyzes their narrative, and sends alerts to Telegram.
+Daily database reset at midnight to start fresh each day.
+"""
+
+import asyncio
+import os
+import signal
+from datetime import datetime, timedelta, time as dt_time
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Import modules after loading env vars
+# Using scraper instead of API for complete data
+from dex_scraper import get_new_filtered_tokens, get_token_info, save_token_to_db
+from narrative_analyzer import analyze_token_narrative
+from telegram_alerter import send_alert, send_startup_message
+from token_db import get_seen_count, clear_all_tokens
+
+# Configuration
+POLL_INTERVAL_HOURS = 4  # Poll every 4 hours (6 times per day)
+POLL_TIMES = [0, 4, 8, 12, 16, 20]  # Fixed times: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00
+
+# Track the last reset date
+last_reset_date = None
+
+# Graceful shutdown flag
+shutdown_event = asyncio.Event()
+
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals gracefully."""
+    print("\n[Main] Shutdown signal received. Stopping...")
+    shutdown_event.set()
+
+
+async def process_token(token_data: dict) -> None:
+    """
+    Process a single token: analyze narrative and send alert.
+    """
+    try:
+        token_info = get_token_info(token_data)
+        symbol = token_info.get("symbol", "???")
+        name = token_info.get("name", "Unknown")
+        
+        print(f"[Main] Processing: {name} (${symbol})")
+        
+        # Analyze narrative
+        analysis = await analyze_token_narrative(token_info)
+        
+        # Send Telegram alert
+        success = await send_alert(token_info, analysis)
+        
+        if success:
+            # Save to database after successful alert
+            save_token_to_db(token_info)
+            print(f"[Main] ✅ Alert sent for {symbol}")
+        else:
+            print(f"[Main] ❌ Failed to send alert for {symbol}")
+            
+    except Exception as e:
+        print(f"[Main] Error processing token: {e}")
+
+
+async def poll_loop() -> None:
+    """
+    Main polling loop that checks for new tokens every 4 hours.
+    Polls at fixed times: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00
+    Resets database at midnight each day.
+    """
+    global last_reset_date
+    
+    print(f"[Main] Starting polling loop (interval: {POLL_INTERVAL_HOURS} hours)")
+    print(f"[Main] Fixed poll times: {POLL_TIMES}")
+    print(f"[Main] Using Dexscreener page scraper for complete data")
+    print(f"[Main] Filters: minLiq$60k, minMcap$300k, min24hVol$2M, min24hChg20%, min6hChg5%")
+    
+    # Send startup notification
+    await send_startup_message()
+    
+    # Initialize reset date
+    last_reset_date = datetime.now().date()
+    
+    # Initial check
+    await run_check()
+    
+    while not shutdown_event.is_set():
+        # Check if it's a new day (midnight reset)
+        current_date = datetime.now().date()
+        if current_date > last_reset_date:
+            print(f"\n[Main] 🌅 New day detected! Resetting database...")
+            clear_all_tokens()
+            last_reset_date = current_date
+        
+        # Calculate next poll time
+        next_poll = get_next_poll_time()
+        wait_seconds = (next_poll - datetime.now()).total_seconds()
+        
+        if wait_seconds > 0:
+            print(f"[Main] Next check at: {next_poll.strftime('%Y-%m-%d %H:%M:%S')} (in {wait_seconds/60:.1f} minutes)")
+            
+            # Wait for next poll time or shutdown
+            try:
+                await asyncio.wait_for(
+                    shutdown_event.wait(),
+                    timeout=wait_seconds
+                )
+                break  # Shutdown requested
+            except asyncio.TimeoutError:
+                pass  # Time for next check
+        
+        # Check for midnight reset again before running check
+        current_date = datetime.now().date()
+        if current_date > last_reset_date:
+            print(f"\n[Main] 🌅 New day detected! Resetting database...")
+            clear_all_tokens()
+            last_reset_date = current_date
+        
+        await run_check()
+
+
+def get_next_poll_time() -> datetime:
+    """
+    Calculate the next scheduled poll time.
+    Returns the next time from POLL_TIMES that's in the future.
+    """
+    now = datetime.now()
+    today = now.date()
+    
+    # Check each poll time for today
+    for hour in POLL_TIMES:
+        poll_time = datetime.combine(today, dt_time(hour=hour, minute=0, second=0))
+        if poll_time > now:
+            return poll_time
+    
+    # All poll times for today have passed, return first poll time tomorrow
+    tomorrow = today + timedelta(days=1)
+    return datetime.combine(tomorrow, dt_time(hour=POLL_TIMES[0], minute=0, second=0))
+
+
+async def run_check() -> None:
+    """Run a single check for new tokens."""
+    print(f"\n[Main] {'='*40}")
+    print(f"[Main] Checking for new tokens at {datetime.now().strftime('%H:%M:%S')}")
+    print(f"[Main] {'='*40}")
+    
+    try:
+        new_tokens = get_new_filtered_tokens()
+        
+        if new_tokens:
+            print(f"[Main] Found {len(new_tokens)} new token(s) matching criteria")
+            
+            for token_data in new_tokens:
+                await process_token(token_data)
+                # Small delay between tokens
+                await asyncio.sleep(5)
+        else:
+            print(f"[Main] No new tokens matching criteria")
+        
+        # Show database stats
+        seen_count = get_seen_count()
+        print(f"[Main] Total tokens in database: {seen_count}")
+        
+    except Exception as e:
+        print(f"[Main] Error in check: {e}")
+
+
+async def main() -> None:
+    """
+    Main entry point for the crypto alert bot.
+    """
+    print("=" * 50)
+    print("🚀 Crypto Alert Bot V2 Starting...")
+    print(f"📅 Checking every {POLL_INTERVAL_HOURS} hours")
+    print("=" * 50)
+    
+    # Validate required environment variables
+    required_vars = [
+        ("TELEGRAM_BOT_TOKEN", os.getenv("TELEGRAM_BOT_TOKEN")),
+        ("TELEGRAM_CHAT_ID", os.getenv("TELEGRAM_CHAT_ID")),
+        ("GROQ_API_KEY", os.getenv("GROQ_API_KEY")),
+    ]
+    
+    missing_vars = [name for name, value in required_vars if not value]
+    
+    if missing_vars:
+        print("\n⚠️  Warning: Missing environment variables:")
+        for var in missing_vars:
+            print(f"   - {var}")
+        print()
+    
+    # Set up signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    # Run the polling loop
+    await poll_loop()
+    
+    print("[Main] Bot stopped. Goodbye!")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
