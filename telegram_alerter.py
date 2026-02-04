@@ -101,15 +101,16 @@ async def send_alert(token_info: dict, analysis: dict) -> bool:
     message = format_alert_message(token_info, analysis)
     
     try:
-        # Create bot instance
+        # Create bot instance with proper connection management
         bot = Bot(token=TELEGRAM_BOT_TOKEN)
         
-        # Send message (no parse_mode to avoid markdown issues)
-        await bot.send_message(
-            chat_id=TELEGRAM_CHAT_ID,
-            text=message,
-            disable_web_page_preview=False
-        )
+        async with bot:
+            # Send message (no parse_mode to avoid markdown issues)
+            await bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text=message,
+                disable_web_page_preview=False
+            )
         
         print(f"[TelegramAlerter] Alert sent for {token_info.get('symbol', 'Unknown')}")
         return True
@@ -135,10 +136,11 @@ async def send_startup_message() -> bool:
     try:
         bot = Bot(token=TELEGRAM_BOT_TOKEN)
         
-        await bot.send_message(
-            chat_id=TELEGRAM_CHAT_ID,
-            text="🤖 Crypto Alert Bot Started\n\nMonitoring Dexscreener for new tokens..."
-        )
+        async with bot:
+            await bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text="🤖 Crypto Alert Bot Started\n\nMonitoring Dexscreener for new tokens..."
+            )
         
         return True
         
@@ -199,11 +201,12 @@ async def send_price_movement_alert(alert: dict) -> bool:
     
     try:
         bot = Bot(token=TELEGRAM_BOT_TOKEN)
-        await bot.send_message(
-            chat_id=TELEGRAM_CHAT_ID,
-            text=message,
-            disable_web_page_preview=True
-        )
+        async with bot:
+            await bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text=message,
+                disable_web_page_preview=True
+            )
         print(f"[TelegramAlerter] {milestone} alert sent for {symbol}")
         return True
         
