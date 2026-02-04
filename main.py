@@ -22,6 +22,7 @@ from narrative_analyzer import analyze_token_narrative
 from telegram_alerter import send_alert, send_startup_message, send_price_movement_alert
 from token_db import get_seen_count, clear_all_tokens
 from price_tracker import check_all_price_movements
+from telegram_commands import run_command_listener
 
 # Configuration
 POLL_INTERVAL_HOURS = 6  # Poll every 6 hours (4 times per day)
@@ -218,8 +219,12 @@ async def main() -> None:
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    # Run the polling loop
-    await poll_loop()
+    # Run the command listener and polling loop concurrently
+    await asyncio.gather(
+        run_command_listener(),
+        poll_loop(),
+        return_exceptions=True
+    )
     
     print("[Main] Bot stopped. Goodbye!")
 
