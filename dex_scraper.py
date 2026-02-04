@@ -73,10 +73,17 @@ def scrape_dexscreener_pairs() -> list[dict]:
         except:
             print("[Scraper] Warning: Could not find table rows")
         
-        # Scroll to load more
-        for _ in range(3):
+        # Scroll to load more tokens
+        for i in range(6):
             driver.execute_script("window.scrollBy(0, 1000);")
-            time.sleep(1)
+            time.sleep(0.8)
+        
+        # Scroll back to top and down again to ensure all loaded
+        driver.execute_script("window.scrollTo(0, 0);")
+        time.sleep(0.5)
+        for i in range(6):
+            driver.execute_script("window.scrollBy(0, 1000);")
+            time.sleep(0.5)
         
         # Extract pair data from rows
         pairs = []
@@ -227,10 +234,18 @@ def get_new_filtered_tokens(chain: str = None) -> list[dict]:
             already_seen += 1
             continue
         
-        # Check for Twitter (profile requirement)
+        # Get Twitter URL if available (profile=1 in URL already filters, so be lenient)
         twitter_url = get_twitter_from_pair(pair_data)
+        
+        # Log if no Twitter found but still process
         if not twitter_url:
-            continue
+            symbol = base_token.get("symbol", "???")
+            print(f"[Scraper] Note: {symbol} has no Twitter in API, using profile page link")
+            # Try to get any social link
+            info = pair_data.get("info", {})
+            socials = info.get("socials", [])
+            if socials:
+                twitter_url = socials[0].get("url", "")
         
         # Build enriched data
         enriched = {
