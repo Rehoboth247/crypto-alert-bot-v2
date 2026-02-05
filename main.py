@@ -25,10 +25,11 @@ from price_tracker import check_all_price_movements
 from telegram_commands import run_command_listener
 
 # Configuration
-POLL_INTERVAL_HOURS = 6  # Poll every 6 hours (4 times per day)
+POLL_INTERVAL_HOURS = 2  # Poll every 2 hours (12 times per day)
 # Poll times in UTC that correspond to WAT (UTC+1) schedule
-# WAT 00:00 = UTC 23:00, WAT 06:00 = UTC 05:00, WAT 12:00 = UTC 11:00, WAT 18:00 = UTC 17:00
-POLL_TIMES = [23, 5, 11, 17]  # Every 6 hours starting from midnight WAT
+# WAT times: 00, 02, 04, 06, 08, 10, 12, 14, 16, 18, 20, 22
+# UTC equivalents: 23, 01, 03, 05, 07, 09, 11, 13, 15, 17, 19, 21
+POLL_TIMES = [23, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21]  # Every 2 hours starting from midnight WAT
 
 # Track the last reset date
 last_reset_date = None
