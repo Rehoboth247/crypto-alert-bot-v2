@@ -9,7 +9,7 @@ Daily database reset at midnight to start fresh each day.
 import asyncio
 import os
 import signal
-from datetime import datetime, timedelta, time as dt_time, timezone
+from datetime import datetime, timedelta, time as dt_time
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -29,9 +29,6 @@ POLL_INTERVAL_HOURS = 6  # Poll every 6 hours (4 times per day)
 # Poll times in UTC that correspond to WAT (UTC+1) schedule
 # WAT 00:00 = UTC 23:00, WAT 06:00 = UTC 05:00, WAT 12:00 = UTC 11:00, WAT 18:00 = UTC 17:00
 POLL_TIMES = [23, 5, 11, 17]  # Every 6 hours starting from midnight WAT
-
-# WAT timezone (UTC+1)
-WAT = timezone(timedelta(hours=1))
 
 # Track the last reset date
 last_reset_date = None
@@ -161,7 +158,7 @@ def get_next_poll_time() -> datetime:
 async def run_check() -> None:
     """Run a single check for new tokens and price movements."""
     print(f"\n[Main] {'='*40}")
-    print(f"[Main] Checking for new tokens at {datetime.now(WAT).strftime('%H:%M:%S')} WAT")
+    print(f"[Main] Checking for new tokens at {datetime.now().strftime('%H:%M:%S')}")
     print(f"[Main] {'='*40}")
     
     try:

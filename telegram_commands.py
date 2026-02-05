@@ -6,12 +6,9 @@ Handles bot commands like /status to query the token database.
 
 import os
 import asyncio
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from telegram import Bot, Update
 from telegram.ext import Application, CommandHandler, ContextTypes
-
-# WAT timezone (UTC+1)
-WAT = timezone(timedelta(hours=1))
 
 # Load environment variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -36,7 +33,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         count = get_seen_count()
         recent = get_recent_tokens(limit=15)
         
-        now = datetime.now(WAT)
+        now = datetime.now()
         
         message = f"""📊 **Crypto Alert Bot Status**
 🕐 Time: {now.strftime('%Y-%m-%d %H:%M:%S')} WAT
