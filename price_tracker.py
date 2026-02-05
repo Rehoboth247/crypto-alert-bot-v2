@@ -1,12 +1,12 @@
 """
 Price Tracker Module
 
-Monitors price movements of alerted tokens and sends follow-up alerts
-when significant milestones are hit (2x, 5x, 10x, -50%).
+Monitors price movements including batched updates to respect rate limits.
 """
 
+import asyncio
 import requests
-from typing import Optional
+from typing import Optional, Dict, List
 from token_db import get_tokens_for_price_tracking, update_milestone_hit
 
 # Price movement thresholds
@@ -17,55 +17,74 @@ MILESTONES = {
 }
 DUMP_THRESHOLD = -0.50  # 50% loss
 
+# Dexscreener limits
+BATCH_SIZE = 30
+BATCH_DELAY = 1.0  # Seconds between batches
 
-def get_current_price(chain: str, token_address: str) -> Optional[float]:
+def get_current_prices_batch(addresses: List[str]) -> Dict[str, float]:
     """
-    Fetch current token price from Dexscreener API.
+    Fetch current prices for a batch of tokens.
     
     Args:
-        chain: Blockchain (e.g., "solana", "ethereum").
-        token_address: Token contract address.
+        addresses: List of token addresses (max 30).
         
     Returns:
-        Current price in USD, or None if unavailable.
+        Dictionary mapping address -> price_usd.
     """
+    if not addresses:
+        return {}
+        
     try:
-        url = f"https://api.dexscreener.com/latest/dex/tokens/{token_address}"
+        # Join addresses with comma
+        addr_str = ",".join(addresses)
+        url = f"https://api.dexscreener.com/latest/dex/tokens/{addr_str}"
         response = requests.get(url, timeout=15)
         response.raise_for_status()
         data = response.json()
         
+        prices = {}
         pairs = data.get("pairs", [])
-        if pairs:
-            # Get price from highest liquidity pair
-            best_pair = max(pairs, key=lambda p: p.get("liquidity", {}).get("usd", 0) or 0)
-            price_usd = best_pair.get("priceUsd")
-            if price_usd:
-                return float(price_usd)
-        return None
-    except Exception as e:
-        return None
-
-
-def check_price_milestones(token: dict) -> list[dict]:
-    """
-    Check if a token has hit any price milestones.
-    
-    Args:
-        token: Token dict with token_address, symbol, chain, alert_price, milestones_hit.
         
-    Returns:
-        List of milestone alerts to send.
+        # Group pairs by base token address
+        # Dexscreener might return multiple pairs per token (e.g., SOL/USDC, SOL/USDT)
+        # We want the pair with highest liquidity for each token
+        token_best_pairs = {}
+        
+        for pair in pairs:
+            base_token = pair.get("baseToken", {})
+            address = base_token.get("address", "").lower()
+            if not address:
+                continue
+                
+            liquidity = pair.get("liquidity", {}).get("usd", 0) or 0
+            
+            # Keep track of best pair for this address
+            if address not in token_best_pairs or liquidity > token_best_pairs[address]["liq"]:
+                token_best_pairs[address] = {
+                    "liq": liquidity,
+                    "price": float(pair.get("priceUsd", 0) or 0)
+                }
+        
+        # Extract final prices
+        for address, data in token_best_pairs.items():
+            if data["price"] > 0:
+                prices[address] = data["price"]
+                
+        return prices
+        
+    except Exception as e:
+        print(f"[PriceTracker] Batch error: {e}")
+        return {}
+
+
+def check_price_milestones(token: dict, current_price: float) -> list[dict]:
+    """
+    Check if a token has hit any price milestones using known current price.
     """
     alerts = []
     
     alert_price = token.get("alert_price", 0)
-    if alert_price <= 0:
-        return alerts
-    
-    # Get current price
-    current_price = get_current_price(token["chain"], token["token_address"])
-    if current_price is None:
+    if alert_price <= 0 or current_price <= 0:
         return alerts
     
     milestones_hit = token.get("milestones_hit", "")
@@ -84,7 +103,6 @@ def check_price_milestones(token: dict) -> list[dict]:
                 "multiplier": multiplier,
                 "change_percent": price_change * 100
             })
-            # Record milestone as hit
             update_milestone_hit(token["token_address"], milestone_name)
     
     # Check dump threshold (-50%)
@@ -105,10 +123,7 @@ def check_price_milestones(token: dict) -> list[dict]:
 
 async def check_all_price_movements() -> list[dict]:
     """
-    Check all tracked tokens for price movements.
-    
-    Returns:
-        List of all milestone alerts.
+    Check all tracked tokens for price movements using batched requests.
     """
     tokens = get_tokens_for_price_tracking()
     
@@ -116,15 +131,33 @@ async def check_all_price_movements() -> list[dict]:
         print("[PriceTracker] No tokens to track")
         return []
     
-    print(f"[PriceTracker] Checking {len(tokens)} tokens for price movements...")
+    print(f"[PriceTracker] Checking {len(tokens)} tokens (Batch size: {BATCH_SIZE})")
     
     all_alerts = []
-    for token in tokens:
-        try:
-            alerts = check_price_milestones(token)
-            all_alerts.extend(alerts)
-        except Exception as e:
-            print(f"[PriceTracker] Error checking {token.get('symbol', '???')}: {e}")
+    
+    # Process in batches
+    for i in range(0, len(tokens), BATCH_SIZE):
+        batch = tokens[i:i + BATCH_SIZE]
+        addresses = [t["token_address"] for t in batch]
+        
+        # Fetch prices for batch
+        # Note: Using synchronous request here inside async function is ok for simplicity
+        # as long as delay is minimal, but ideally would be async.
+        # Given low frequency (every 2-6 hours), it's acceptable.
+        prices = get_current_prices_batch(addresses)
+        
+        # Process each token in batch
+        for token in batch:
+            address = token["token_address"].lower()
+            current_price = prices.get(address)
+            
+            if current_price:
+                alerts = check_price_milestones(token, current_price)
+                all_alerts.extend(alerts)
+        
+        # Rate limit delay between batches
+        if i + BATCH_SIZE < len(tokens):
+            await asyncio.sleep(BATCH_DELAY)
     
     if all_alerts:
         print(f"[PriceTracker] Found {len(all_alerts)} milestone alert(s)")
