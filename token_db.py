@@ -151,9 +151,12 @@ def get_seen_count() -> int:
     return count
 
 
-def clear_all_tokens() -> int:
+def clear_old_tokens(days_to_keep: int = 7) -> int:
     """
-    Clear all tokens from the database (daily reset).
+    Clear tokens older than the specified number of days.
+    
+    Args:
+        days_to_keep: Number of days of history to retain.
     
     Returns:
         Number of tokens that were cleared.
@@ -161,16 +164,43 @@ def clear_all_tokens() -> int:
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Get count before clearing
-    cursor.execute("SELECT COUNT(*) FROM seen_tokens")
+    # Calculate cutoff date
+    cursor.execute(f"SELECT date('now', '-{days_to_keep} days')")
+    cutoff_date = cursor.fetchone()[0]
+    
+    # Get count to be cleared
+    cursor.execute(
+        "SELECT COUNT(*) FROM seen_tokens WHERE alerted_at < datetime('now', ?)",
+        (f'-{days_to_keep} days',)
+    )
     count = cursor.fetchone()[0]
     
-    # Clear all tokens
+    if count > 0:
+        # Delete old tokens
+        cursor.execute(
+            "DELETE FROM seen_tokens WHERE alerted_at < datetime('now', ?)",
+            (f'-{days_to_keep} days',)
+        )
+        conn.commit()
+        print(f"[TokenDB] Cleaned up {count} tokens older than {days_to_keep} days")
+    else:
+        print(f"[TokenDB] Database clean. No tokens older than {days_to_keep} days.")
+        
+    conn.close()
+    return count
+
+
+def clear_all_tokens() -> int:
+    """
+    Clear all tokens from the database (manual reset).
+    kept for backward compatibility and manual resets.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
     cursor.execute("DELETE FROM seen_tokens")
+    count = cursor.rowcount
     conn.commit()
     conn.close()
-    
-    print(f"[TokenDB] Cleared {count} tokens from database (daily reset)")
     return count
 
 

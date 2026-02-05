@@ -20,7 +20,7 @@ load_dotenv()
 from dex_scraper import get_new_filtered_tokens, get_token_info, save_token_to_db
 from narrative_analyzer import analyze_token_narrative
 from telegram_alerter import send_alert, send_startup_message, send_price_movement_alert
-from token_db import get_seen_count, clear_all_tokens
+from token_db import get_seen_count, clear_all_tokens, clear_old_tokens
 from price_tracker import check_all_price_movements
 from telegram_commands import run_command_listener
 
@@ -97,8 +97,8 @@ async def poll_loop() -> None:
         # Check if it's a new day (midnight reset)
         current_date = datetime.now().date()
         if current_date > last_reset_date:
-            print(f"\n[Main] 🌅 New day detected! Resetting database...")
-            clear_all_tokens()
+            print(f"\n[Main] 🌅 New day detected! cleaning old tokens (7+ days)...")
+            clear_old_tokens(days_to_keep=7)
             last_reset_date = current_date
         
         # Calculate next poll time
@@ -121,8 +121,8 @@ async def poll_loop() -> None:
         # Check for midnight reset again before running check
         current_date = datetime.now().date()
         if current_date > last_reset_date:
-            print(f"\n[Main] 🌅 New day detected! Resetting database...")
-            clear_all_tokens()
+            print(f"\n[Main] 🌅 New day detected! cleaning old tokens (7+ days)...")
+            clear_old_tokens(days_to_keep=7)
             last_reset_date = current_date
         
         await run_check()
