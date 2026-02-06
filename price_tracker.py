@@ -15,7 +15,6 @@ MILESTONES = {
     "5x": 5.0,      # 400% gain
     "10x": 10.0,    # 900% gain
 }
-DUMP_THRESHOLD = -0.50  # 50% loss
 
 # Dexscreener limits
 BATCH_SIZE = 30
@@ -104,19 +103,6 @@ def check_price_milestones(token: dict, current_price: float) -> list[dict]:
                 "change_percent": price_change * 100
             })
             update_milestone_hit(token["token_address"], milestone_name)
-    
-    # Check dump threshold (-50%)
-    if "-50%" not in milestones_hit and price_change <= DUMP_THRESHOLD:
-        alerts.append({
-            "type": "dump",
-            "milestone": "-50%",
-            "token": token,
-            "alert_price": alert_price,
-            "current_price": current_price,
-            "multiplier": multiplier,
-            "change_percent": price_change * 100
-        })
-        update_milestone_hit(token["token_address"], "-50%")
     
     return alerts
 
