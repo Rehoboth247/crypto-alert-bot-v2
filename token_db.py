@@ -151,9 +151,46 @@ def get_seen_count() -> int:
     return count
 
 
+def clear_expired_tokens(hours: int = 24) -> int:
+    """
+    Clear tokens older than the specified number of hours (per-token expiry).
+    
+    Each token is tracked for 24 hours from its discovery time, then auto-removed.
+    
+    Args:
+        hours: Number of hours before a token expires (default 24).
+    
+    Returns:
+        Number of tokens that were cleared.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Get count to be cleared
+    cursor.execute(
+        "SELECT COUNT(*) FROM seen_tokens WHERE alerted_at < datetime('now', ?)",
+        (f'-{hours} hours',)
+    )
+    count = cursor.fetchone()[0]
+    
+    if count > 0:
+        # Delete expired tokens
+        cursor.execute(
+            "DELETE FROM seen_tokens WHERE alerted_at < datetime('now', ?)",
+            (f'-{hours} hours',)
+        )
+        conn.commit()
+        print(f"[TokenDB] 🗑️ Removed {count} expired token(s) (older than {hours}h)")
+    
+    conn.close()
+    return count
+
+
 def clear_old_tokens(days_to_keep: int = 7) -> int:
     """
     Clear tokens older than the specified number of days.
+    DEPRECATED: Use clear_expired_tokens() for 24-hour per-token expiry.
+    Kept for backward compatibility.
     
     Args:
         days_to_keep: Number of days of history to retain.

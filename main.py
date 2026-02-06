@@ -1,9 +1,9 @@
 """
 Crypto Alert Bot - Main Entry Point
 
-Monitors Dexscreener for new tokens every 4 hours (6 times per day),
+Monitors Dexscreener for new tokens every 2 hours,
 analyzes their narrative, and sends alerts to Telegram.
-Daily database reset at midnight to start fresh each day.
+Each token is tracked for 24 hours then auto-removed (no midnight reset).
 """
 
 import asyncio
@@ -20,19 +20,18 @@ load_dotenv()
 from dex_scraper import get_new_filtered_tokens, get_token_info, save_token_to_db
 from narrative_analyzer import analyze_token_narrative
 from telegram_alerter import send_alert, send_startup_message, send_price_movement_alert
-from token_db import get_seen_count, clear_all_tokens, clear_old_tokens
+from token_db import get_seen_count, clear_expired_tokens
 from price_tracker import check_all_price_movements
 from telegram_commands import run_command_listener
 
 # Configuration
 POLL_INTERVAL_HOURS = 2  # Poll every 2 hours (12 times per day)
+TOKEN_EXPIRY_HOURS = 24  # Track each token for 24 hours from discovery
+
 # Poll times in UTC that correspond to WAT (UTC+1) schedule
 # WAT times: 00, 02, 04, 06, 08, 10, 12, 14, 16, 18, 20, 22
 # UTC equivalents: 23, 01, 03, 05, 07, 09, 11, 13, 15, 17, 19, 21
 POLL_TIMES = [23, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21]  # Every 2 hours starting from midnight WAT
-
-# Track the last reset date
-last_reset_date = None
 
 # Graceful shutdown flag
 shutdown_event = asyncio.Event()
@@ -74,34 +73,23 @@ async def process_token(token_data: dict) -> None:
 
 async def poll_loop() -> None:
     """
-    Main polling loop that checks for new tokens every 4 hours.
-    Polls at fixed times: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00
-    Resets database at midnight each day.
+    Main polling loop that checks for new tokens every 2 hours.
+    Polls at fixed times: 00:00, 02:00, 04:00, ... 22:00 WAT
+    Each token tracked for 24 hours then auto-removed (no midnight reset).
     """
-    global last_reset_date
-    
     print(f"[Main] Starting polling loop (interval: {POLL_INTERVAL_HOURS} hours)")
-    print(f"[Main] Fixed poll times: {POLL_TIMES}")
-    print(f"[Main] Using Dexscreener page scraper for complete data")
+    print(f"[Main] Fixed poll times (UTC): {POLL_TIMES}")
+    print(f"[Main] Token tracking: {TOKEN_EXPIRY_HOURS}h per-token expiry (no midnight reset)")
+    print(f"[Main] Price milestones: 2x, 5x, 10x alerts enabled")
     print(f"[Main] Filters: minLiq$60k, minMcap$300k, min24hVol$2M, min24hChg20%, min6hChg5%")
     
     # Send startup notification
     await send_startup_message()
     
-    # Initialize reset date
-    last_reset_date = datetime.now().date()
-    
     # Initial check
     await run_check()
     
     while not shutdown_event.is_set():
-        # Check if it's a new day (midnight reset)
-        current_date = datetime.now().date()
-        if current_date > last_reset_date:
-            print(f"\n[Main] 🌅 New day detected! cleaning old tokens (7+ days)...")
-            clear_old_tokens(days_to_keep=7)
-            last_reset_date = current_date
-        
         # Calculate next poll time
         next_poll = get_next_poll_time()
         wait_seconds = (next_poll - datetime.now()).total_seconds()
@@ -118,13 +106,6 @@ async def poll_loop() -> None:
                 break  # Shutdown requested
             except asyncio.TimeoutError:
                 pass  # Time for next check
-        
-        # Check for midnight reset again before running check
-        current_date = datetime.now().date()
-        if current_date > last_reset_date:
-            print(f"\n[Main] 🌅 New day detected! cleaning old tokens (7+ days)...")
-            clear_old_tokens(days_to_keep=7)
-            last_reset_date = current_date
         
         await run_check()
 
@@ -163,6 +144,9 @@ async def run_check() -> None:
     print(f"[Main] {'='*40}")
     
     try:
+        # Clean up expired tokens (24h per-token expiry)
+        clear_expired_tokens(hours=TOKEN_EXPIRY_HOURS)
+        
         # Check for new tokens
         new_tokens = get_new_filtered_tokens()
         
@@ -199,6 +183,8 @@ async def main() -> None:
     print("=" * 50)
     print("🚀 Crypto Alert Bot V2 Starting...")
     print(f"📅 Checking every {POLL_INTERVAL_HOURS} hours")
+    print(f"⏱️ Token tracking: {TOKEN_EXPIRY_HOURS}h per token")
+    print(f"🎯 Price milestones: 2x, 5x, 10x")
     print("=" * 50)
     
     # Validate required environment variables
