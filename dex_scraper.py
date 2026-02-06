@@ -30,6 +30,9 @@ DEXSCREENER_FILTER_URL = (
     "&profile=1"
 )
 
+# Rate limiting - delay between API calls (seconds)
+API_DELAY = 1.5
+
 
 def create_driver():
     """Create a headless Chrome driver (works in Docker)."""
@@ -216,6 +219,9 @@ def get_new_filtered_tokens(chain: str = None) -> list[dict]:
     for scraped in scraped_pairs:
         chain_name = scraped["chain"]
         pair_address = scraped["pair_address"]
+        
+        # Rate limit delay before API call
+        time.sleep(API_DELAY)
         
         # Get full pair details
         pair_data = get_pair_details(chain_name, pair_address)
