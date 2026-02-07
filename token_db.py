@@ -151,14 +151,14 @@ def get_seen_count() -> int:
     return count
 
 
-def clear_expired_tokens(hours: int = 24) -> int:
+def clear_expired_tokens(hours: int = 168) -> int:
     """
     Clear tokens older than the specified number of hours (per-token expiry).
     
-    Each token is tracked for 24 hours from its discovery time, then auto-removed.
+    Each token is tracked for 7 days (168h) from its discovery time, then auto-removed.
     
     Args:
-        hours: Number of hours before a token expires (default 24).
+        hours: Number of hours before a token expires (default 168).
     
     Returns:
         Number of tokens that were cleared.

@@ -8,9 +8,12 @@ import asyncio
 import requests
 from typing import Optional, Dict, List
 from token_db import get_tokens_for_price_tracking, update_milestone_hit
+from narrative_analyzer import analyze_token_narrative
+from dex_scraper import get_pair_details, get_token_info
 
 # Price movement thresholds
 MILESTONES = {
+    "+50%": 1.5,    # 50% gain
     "2x": 2.0,      # 100% gain
     "5x": 5.0,      # 400% gain
     "10x": 10.0,    # 900% gain
@@ -18,7 +21,7 @@ MILESTONES = {
 
 # Dexscreener limits
 BATCH_SIZE = 30
-BATCH_DELAY = 1.0  # Seconds between batches
+BATCH_DELAY = 1.5  # Seconds between batches
 
 def get_current_prices_batch(addresses: List[str]) -> Dict[str, float]:
     """
@@ -45,8 +48,6 @@ def get_current_prices_batch(addresses: List[str]) -> Dict[str, float]:
         pairs = data.get("pairs", [])
         
         # Group pairs by base token address
-        # Dexscreener might return multiple pairs per token (e.g., SOL/USDC, SOL/USDT)
-        # We want the pair with highest liquidity for each token
         token_best_pairs = {}
         
         for pair in pairs:
@@ -76,7 +77,7 @@ def get_current_prices_batch(addresses: List[str]) -> Dict[str, float]:
         return {}
 
 
-def check_price_milestones(token: dict, current_price: float) -> list[dict]:
+async def check_price_milestones(token: dict, current_price: float) -> list[dict]:
     """
     Check if a token has hit any price milestones using known current price.
     """
@@ -90,13 +91,40 @@ def check_price_milestones(token: dict, current_price: float) -> list[dict]:
     price_change = (current_price - alert_price) / alert_price
     multiplier = current_price / alert_price
     
-    # Check gain milestones (2x, 5x, 10x)
+    # Check gain milestones
     for milestone_name, threshold in MILESTONES.items():
         if milestone_name not in milestones_hit and multiplier >= threshold:
+            print(f"[PriceTracker] 🚀 Milestone {milestone_name} hit for {token.get('symbol')}!")
+            
+            # Enrich with full token data for the alert
+            chain = token.get("chain", "solana")
+            address = token.get("token_address", "")
+            
+            # Fetch fresh details
+            pair_data = get_pair_details(chain, address)
+            if pair_data:
+                # Mock enrich structure for get_token_info
+                enriched = {
+                    "pair": pair_data,
+                    "profile": {
+                        "chainId": chain,
+                        "tokenAddress": address,
+                        "url": pair_data.get("url", ""),
+                        "links": pair_data.get("info", {}).get("socials", []) or []
+                    }
+                }
+                full_info = get_token_info(enriched)
+            else:
+                full_info = token # Fallback
+            
+            # Run AI Analysis
+            analysis = await analyze_token_narrative(full_info)
+            
             alerts.append({
                 "type": "gain",
                 "milestone": milestone_name,
-                "token": token,
+                "token": full_info,
+                "analysis": analysis,
                 "alert_price": alert_price,
                 "current_price": current_price,
                 "multiplier": multiplier,
@@ -126,10 +154,6 @@ async def check_all_price_movements() -> list[dict]:
         batch = tokens[i:i + BATCH_SIZE]
         addresses = [t["token_address"] for t in batch]
         
-        # Fetch prices for batch
-        # Note: Using synchronous request here inside async function is ok for simplicity
-        # as long as delay is minimal, but ideally would be async.
-        # Given low frequency (every 2-6 hours), it's acceptable.
         prices = get_current_prices_batch(addresses)
         
         # Process each token in batch
@@ -138,7 +162,8 @@ async def check_all_price_movements() -> list[dict]:
             current_price = prices.get(address)
             
             if current_price:
-                alerts = check_price_milestones(token, current_price)
+                # check_price_milestones is now async
+                alerts = await check_price_milestones(token, current_price)
                 all_alerts.extend(alerts)
         
         # Rate limit delay between batches

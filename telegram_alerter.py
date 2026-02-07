@@ -137,9 +137,17 @@ async def send_startup_message() -> bool:
         bot = Bot(token=TELEGRAM_BOT_TOKEN)
         
         async with bot:
+            msg = """🤖 **Crypto Alert Bot V3 Started**
+
+🕵️ **Silent Discovery:** Tracking new tokens silently (1h interval)
+🎯 **Alerts:** Triggered on +50%, 2x, 5x, 10x gains
+⏳ **Retention:** Tokens tracked for 7 Days
+🧠 **AI Analysis:** Included in performance alerts
+"""
             await bot.send_message(
                 chat_id=TELEGRAM_CHAT_ID,
-                text="🤖 Crypto Alert Bot Started\n\nMonitoring Dexscreener for new tokens..."
+                text=msg,
+                parse_mode="Markdown"
             )
         
         return True
@@ -154,7 +162,7 @@ async def send_price_movement_alert(alert: dict) -> bool:
     Send a follow-up alert when a token hits a price milestone.
     
     Args:
-        alert: Dict with milestone info (type, milestone, token, prices).
+        alert: Dict with milestone info (type, milestone, token, prices, analysis).
         
     Returns:
         True if message sent successfully, False otherwise.
@@ -163,41 +171,73 @@ async def send_price_movement_alert(alert: dict) -> bool:
         return False
     
     token = alert.get("token", {})
+    analysis = alert.get("analysis", {})
+    
     symbol = token.get("symbol", "???")
     name = token.get("name", "Unknown")
     chain = token.get("chain", "").upper()
+    
     alert_price = alert.get("alert_price", 0)
     current_price = alert.get("current_price", 0)
     milestone = alert.get("milestone", "")
     change_percent = alert.get("change_percent", 0)
-    alert_type = alert.get("type", "")
     
-    # Choose emoji based on type
-    if alert_type == "gain":
-        emoji = "🚀" if milestone in ["5x", "10x"] else "📈"
-        header = f"{emoji} {milestone} ALERT: {name} (${symbol})"
+    # Analysis Fields
+    narrative = analysis.get("narrative", "Unknown")
+    verdict = analysis.get("verdict", "Unknown")
+    summary = analysis.get("summary", "No summary available.")
+    
+    # Links
+    dex_url = token.get("dexscreener_url", "")
+    twitter_url = token.get("twitter_url", "")
+    
+    # Emoji Selection
+    if milestone == "10x":
+        emoji = "🚀🚀🚀"
+    elif milestone == "5x":
+        emoji = "🚀🚀"
+    elif milestone == "2x":
+        emoji = "🚀"
     else:
-        emoji = "🔻"
-        header = f"{emoji} DUMP ALERT: {name} (${symbol})"
+        emoji = "📈"
     
     # Format prices
     def format_price(p):
         if p >= 1:
-            return f"${p:.4f}"
+            return f"${p:.2f}"
         elif p >= 0.0001:
             return f"${p:.6f}"
         else:
-            return f"${p:.10f}"
-    
-    message = f"""{header}
+            return f"${p:.9f}"
+            
+    def format_millions(val):
+        if not val: return "$0"
+        if val >= 1_000_000: return f"${val/1_000_000:.1f}M"
+        if val >= 1_000: return f"${val/1_000:.1f}K"
+        return f"${val:.0f}"
+
+    liq_str = format_millions(token.get("liquidity_usd", 0))
+    mcap_str = format_millions(token.get("market_cap", 0))
+
+    message = f"""{emoji} **{milestone} ALERT:** {name} (${symbol})
 ⛓️ Chain: {chain}
 
-📊 Alert Price: {format_price(alert_price)}
-📊 Current Price: {format_price(current_price)}
-{'🟢' if change_percent >= 0 else '🔴'} Change: {change_percent:+.1f}%
+📊 **Entry:** {format_price(alert_price)}
+💹 **Current:** {format_price(current_price)}
+🟢 **Gain:** +{change_percent:.0f}%
 
-🎯 Milestone: {milestone}
+💰 Liq: {liq_str} | MC: {mcap_str}
+
+📖 Narrative: {narrative}
+🧠 Verdict: {verdict}
+
+📝 {summary}
+
+🔗 [Dexscreener]({dex_url})
 """
+
+    if twitter_url:
+        message += f"🐦 [Twitter]({twitter_url})"
     
     try:
         bot = Bot(token=TELEGRAM_BOT_TOKEN)
@@ -205,6 +245,7 @@ async def send_price_movement_alert(alert: dict) -> bool:
             await bot.send_message(
                 chat_id=TELEGRAM_CHAT_ID,
                 text=message,
+                parse_mode="Markdown",
                 disable_web_page_preview=True
             )
         print(f"[TelegramAlerter] {milestone} alert sent for {symbol}")

@@ -25,13 +25,12 @@ from price_tracker import check_all_price_movements
 from telegram_commands import run_command_listener
 
 # Configuration
-POLL_INTERVAL_HOURS = 2  # Poll every 2 hours (12 times per day)
-TOKEN_EXPIRY_HOURS = 24  # Track each token for 24 hours from discovery
+POLL_INTERVAL_HOURS = 1  # Poll every 1 hour (24 times per day)
+TOKEN_EXPIRY_HOURS = 168  # Track each token for 7 days (168h)
 
-# Poll times in UTC that correspond to WAT (UTC+1) schedule
-# WAT times: 00, 02, 04, 06, 08, 10, 12, 14, 16, 18, 20, 22
-# UTC equivalents: 23, 01, 03, 05, 07, 09, 11, 13, 15, 17, 19, 21
-POLL_TIMES = [23, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21]  # Every 2 hours starting from midnight WAT
+# Poll times in UTC (every hour)
+# Since we poll every hour, we just need a list of 0-23
+POLL_TIMES = list(range(24))
 
 # Graceful shutdown flag
 shutdown_event = asyncio.Event()
@@ -45,27 +44,18 @@ def signal_handler(signum, frame):
 
 async def process_token(token_data: dict) -> None:
     """
-    Process a single token: analyze narrative and send alert.
+    Process a single token: Silent Discovery.
+    Just save to database for tracking. Alerts happen on price performance.
     """
     try:
         token_info = get_token_info(token_data)
         symbol = token_info.get("symbol", "???")
         name = token_info.get("name", "Unknown")
         
-        print(f"[Main] Processing: {name} (${symbol})")
+        print(f"[Main] 🕵️ Silent Discovery: {name} (${symbol}) - Tracking started")
         
-        # Analyze narrative
-        analysis = await analyze_token_narrative(token_info)
-        
-        # Send Telegram alert
-        success = await send_alert(token_info, analysis)
-        
-        if success:
-            # Save to database after successful alert
-            save_token_to_db(token_info)
-            print(f"[Main] ✅ Alert sent for {symbol}")
-        else:
-            print(f"[Main] ❌ Failed to send alert for {symbol}")
+        # Save to database immediately (no initial alert)
+        save_token_to_db(token_info)
             
     except Exception as e:
         print(f"[Main] Error processing token: {e}")
