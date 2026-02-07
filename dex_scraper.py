@@ -20,12 +20,13 @@ from token_db import is_token_seen, mark_token_seen
 DEXSCREENER_FILTER_URL = (
     "https://dexscreener.com/new-pairs?"
     "rankBy=pairAge&order=asc"
-    "&minLiq=20000"
-    "&minMarketCap=100000"
-    "&maxMarketCap=10000000000"
+    "&minLiq=60000"
+    "&minMarketCap=300000"
+    "&maxFdv=10000000000"
+    "&min24HBuys=2"
     "&min24HSells=2"
-    "&min24HVol=500000"
-    "&min24HChg=50"
+    "&min24HVol=2000000"
+    "&min24HChg=20"
     "&min6HChg=5"
     "&profile=1"
 )
