@@ -10,7 +10,15 @@ from datetime import datetime
 from typing import Optional
 
 # Database file path
-DB_FILE = os.path.join(os.path.dirname(__file__), "tokens.db")
+# Allow overriding via environment variable for Railway persistence
+DB_PATH = os.getenv("DB_PATH")
+if DB_PATH:
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    DB_FILE = DB_PATH
+else:
+    # Default to local directory
+    DB_FILE = os.path.join(os.path.dirname(__file__), "tokens.db")
 
 
 def get_connection() -> sqlite3.Connection:

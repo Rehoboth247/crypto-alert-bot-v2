@@ -1,7 +1,8 @@
 """
 Dexscreener Scraper Module
 
-Uses Selenium to scrape the actual Dexscreener filtered page.
+Uses Selenium with advanced stealth techniques to scrape Dexscreener.
+Implements "Grab Everything, Filter Later" logic for robustness.
 """
 
 from selenium import webdriver
@@ -35,114 +36,140 @@ API_DELAY = 1.5
 
 
 def create_driver():
-    """Create a headless Chrome driver (works in Docker)."""
+    """
+    Creates a Chrome driver configured to bypass bot detection.
+    """
     options = Options()
-    options.add_argument("--headless")
+    
+    # 1. Use the new Headless mode (indistinguishable from headful in many cases)
+    options.add_argument("--headless=new")
+    
+    # 2. Standard Linux/Docker flags
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
-    options.add_argument("--disable-extensions")
-    options.add_argument("--disable-software-rasterizer")
-    options.add_argument("--remote-debugging-port=9222")
-    options.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+    
+    # 3. Critical: Disable automation flags
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option("useAutomationExtension", False)
+    
+    # 4. Use a realistic User-Agent
+    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     
     driver = webdriver.Chrome(options=options)
+    
+    # 5. execute_cdp_cmd: The Magic Bullet
+    # This prevents the website from checking `navigator.webdriver` via JavaScript
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+        "source": """
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            })
+        """
+    })
+    
+    time.sleep(2) # Give CDP command a moment
+    
     return driver
 
 
 def scrape_dexscreener_pairs() -> list[dict]:
     """
-    Scrape the Dexscreener filtered page for pair data.
+    Scrape the Dexscreener filtered page using robust link extraction.
     
     Returns:
-        List of dicts with chain, pair_address, and token info.
+        List of dicts with chain, pair_address, and partial token info.
     """
-    print("[Scraper] Opening Dexscreener...")
+    print("[Scraper] Opening Dexscreener (Stealth Mode)...")
     
+    driver = None
     try:
         driver = create_driver()
         driver.get(DEXSCREENER_FILTER_URL)
         
-        # Wait for table to load
+        # Wait for content to load (wait for any link to appear)
         print("[Scraper] Waiting for page load...")
-        time.sleep(5)
-        
-        # Try to wait for rows
         try:
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, ".ds-dex-table-row"))
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.TAG_NAME, "a"))
             )
         except:
-            print("[Scraper] Warning: Could not find table rows")
+            print("[Scraper] Warning: Timeout waiting for page content")
         
         # Scroll to load more tokens
-        for i in range(6):
-            driver.execute_script("window.scrollBy(0, 1000);")
-            time.sleep(0.8)
+        print("[Scraper] Scrolling...")
+        for i in range(5):
+            driver.execute_script("window.scrollBy(0, 1500);")
+            time.sleep(1)
         
-        # Scroll back to top and down again to ensure all loaded
-        driver.execute_script("window.scrollTo(0, 0);")
-        time.sleep(0.5)
-        for i in range(6):
-            driver.execute_script("window.scrollBy(0, 1000);")
-            time.sleep(0.5)
+        # Extraction Logic: "Grab Everything, Filter Later"
+        # Instead of searching for specific classes, we grab ALL links.
+        links = driver.find_elements(By.TAG_NAME, "a")
+        print(f"[Scraper] Found {len(links)} total links. Filtering...")
         
-        # Extract pair data from rows
+        unique_pairs = set()
         pairs = []
-        rows = driver.find_elements(By.CSS_SELECTOR, ".ds-dex-table-row")
         
-        print(f"[Scraper] Found {len(rows)} rows")
-        
-        for row in rows:
+        for link in links:
             try:
-                href = row.get_attribute("href")
+                href = link.get_attribute("href")
                 if not href:
                     continue
                 
-                # Parse href: /solana/pairAddress
-                match = re.match(r'/([^/]+)/([^/?]+)', href.replace("https://dexscreener.com", ""))
+                # Filter for token pair patterns
+                # Matches: dexscreener.com/chain-name/address or /chain-name/address
+                # Robust regex to handle full URLs or relative paths
+                match = re.search(r'dexscreener\.com/([^/]+)/([a-zA-Z0-9]+)$', href)
                 if not match:
-                    continue
+                     match = re.search(r'/([^/]+)/([a-zA-Z0-9]+)$', href)
                 
-                chain = match.group(1)
-                pair_address = match.group(2)
-                
-                # Get symbol and name
-                try:
-                    symbol_el = row.find_element(By.CSS_SELECTOR, ".ds-dex-table-row-base-token-symbol")
-                    symbol = symbol_el.text
-                except:
-                    symbol = "???"
-                
-                try:
-                    name_el = row.find_element(By.CSS_SELECTOR, ".ds-dex-table-row-base-token-name")
-                    name = name_el.text
-                except:
-                    name = ""
-                
-                pairs.append({
-                    "chain": chain,
-                    "pair_address": pair_address,
-                    "symbol": symbol,
-                    "name": name,
-                    "href": href
-                })
-                
+                if match:
+                    chain = match.group(1)
+                    pair_address = match.group(2)
+                    
+                    # 1. Filter out invalid "chains" that are actually domains or subdomains
+                    if '.' in chain or chain == 'api':
+                        continue
+
+                    # 2. Filter out common navigation paths
+                    if chain in ['watchlist', 'new-pairs', 'gainers', 'losers', 'u', 'trends', 'portfolio', 'multicharts', 'product', 'developers', 'about', 'privacy', 'terms']:
+                        continue
+                        
+                    # 3. Filter out if address looks like a navigation keyword (just in case)
+                    if pair_address in ['watchlist', 'new-pairs', 'gainers', 'losers', 'u', 'trends', 'portfolio', 'multicharts', 'product']:
+                       continue
+                    
+                    # Create a unique key
+                    key = f"{chain}/{pair_address}"
+                    
+                    if key not in unique_pairs:
+                        unique_pairs.add(key)
+                        
+                        # We don't have symbol/name yet, but we have the ID to fetch it via API
+                        pairs.append({
+                            "chain": chain,
+                            "pair_address": pair_address,
+                            "symbol": "???", # Will be filled by API
+                            "name": "",      # Will be filled by API
+                            "href": href
+                        })
             except Exception as e:
                 continue
-        
-        driver.quit()
-        print(f"[Scraper] Extracted {len(pairs)} pairs")
+                
+        print(f"[Scraper] Extracted {len(pairs)} unique pairs")
         return pairs
         
     except Exception as e:
         print(f"[Scraper] Error: {e}")
-        try:
-            driver.quit()
-        except:
-            pass
         return []
+    finally:
+        if driver:
+            try:
+                driver.quit()
+            except:
+                pass
 
 
 def get_pair_details(chain: str, pair_address: str) -> Optional[dict]:
@@ -207,9 +234,6 @@ def get_new_filtered_tokens(chain: str = None) -> list[dict]:
     # Filter to Solana only if specified
     if chain:
         scraped_pairs = [p for p in scraped_pairs if p["chain"].lower() == chain.lower()]
-    else:
-        # Default to all chains shown
-        pass
     
     print(f"[Scraper] Processing {len(scraped_pairs)} pairs...")
     
@@ -240,13 +264,13 @@ def get_new_filtered_tokens(chain: str = None) -> list[dict]:
             already_seen += 1
             continue
         
-        # Get Twitter URL if available (profile=1 in URL already filters, so be lenient)
+        # Get Twitter URL
         twitter_url = get_twitter_from_pair(pair_data)
         
         # Log if no Twitter found but still process
         if not twitter_url:
             symbol = base_token.get("symbol", "???")
-            print(f"[Scraper] Note: {symbol} has no Twitter in API, using profile page link")
+            # print(f"[Scraper] Note: {symbol} has no Twitter in API")
             # Try to get any social link
             info = pair_data.get("info", {})
             socials = info.get("socials", [])
@@ -272,6 +296,11 @@ def get_new_filtered_tokens(chain: str = None) -> list[dict]:
         vol = pair_data.get("volume", {}).get("h24", 0) or 0
         chg = pair_data.get("priceChange", {}).get("h24", 0) or 0
         print(f"[Scraper] ✓ {symbol}: Liq=${liq:,.0f}, Vol=${vol:,.0f}, 24h={chg:+.0f}%")
+        
+        # Limit to processing reasonable amount to avoid long loop times if scraping returned hundreds
+        if len(new_tokens) >= 30:
+            print("[Scraper] Reached batch limit of 30 new tokens")
+            break
     
     print(f"[Scraper] Found {len(new_tokens)} new tokens, {already_seen} already seen")
     return new_tokens
@@ -332,3 +361,11 @@ def save_token_to_db(token_info: dict) -> None:
         market_cap=token_info.get("market_cap", 0),
         alert_price=token_info.get("price_usd", 0)
     )
+
+if __name__ == "__main__":
+    # Test the independent scraper function
+    print("Testing Stealth Scraper...")
+    pairs = scrape_dexscreener_pairs()
+    print(f"Scraped {len(pairs)} pairs.")
+    for p in pairs[:5]:
+        print(f" - {p}")
