@@ -232,6 +232,30 @@ def get_pair_details(chain: str, pair_address: str) -> Optional[dict]:
         return None
 
 
+def get_best_pair_for_token(token_address: str) -> Optional[dict]:
+    """
+    Fetch the best pair (highest liquidity) for a given token address.
+    Uses 'dex/tokens/{tokenAddress}' endpoint.
+    """
+    try:
+        url = f"https://api.dexscreener.com/latest/dex/tokens/{token_address}"
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        
+        pairs = data.get("pairs", [])
+        if not pairs:
+            return None
+            
+        # Sort by liquidity desc just in case
+        pairs.sort(key=lambda x: x.get("liquidity", {}).get("usd", 0) or 0, reverse=True)
+        return pairs[0]
+        
+    except Exception as e:
+        print(f"[Scraper] Error fetching token best pair {token_address}: {e}")
+        return None
+
+
 def get_token_profile(chain: str, token_address: str) -> Optional[dict]:
     """Check if token has a Dexscreener profile and get Twitter link."""
     try:

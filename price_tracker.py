@@ -9,7 +9,7 @@ import requests
 from typing import Optional, Dict, List
 from token_db import get_tokens_for_price_tracking, update_milestone_hit
 from narrative_analyzer import analyze_token_narrative
-from dex_scraper import get_pair_details, get_token_info
+from dex_scraper import get_pair_details, get_token_info, get_best_pair_for_token
 
 # Price movement thresholds
 MILESTONES = {
@@ -100,8 +100,9 @@ async def check_price_milestones(token: dict, current_price: float) -> list[dict
             chain = token.get("chain", "solana")
             address = token.get("token_address", "")
             
-            # Fetch fresh details
-            pair_data = get_pair_details(chain, address)
+            # Fetch fresh details using proper token endpoint
+            pair_data = get_best_pair_for_token(address)
+            
             if pair_data:
                 # Mock enrich structure for get_token_info
                 enriched = {
