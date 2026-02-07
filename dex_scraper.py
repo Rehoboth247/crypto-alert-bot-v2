@@ -75,6 +75,43 @@ def create_driver():
     return driver
 
 
+def check_for_blocking(driver) -> bool:
+    """
+    Checks if the scraper is blocked by WAF/Cloudflare.
+    Returns True if blocked.
+    """
+    try:
+        title = driver.title.lower()
+        body = driver.find_element(By.TAG_NAME, "body").text.lower()
+        
+        # Common blocking indicators
+        blocking_keywords = [
+            "access denied",
+            "access to this page has been denied",
+            "challenge",
+            "verify you are human",
+            "cloudflare",
+            "just a moment",
+            "attention required",
+            "security check"
+        ]
+        
+        if any(keyword in title for keyword in blocking_keywords):
+            print(f"[Scraper] 🚨 BLOCKED DETECTED via Title: {driver.title}")
+            return True
+            
+        # Check body text for specific blocking messages
+        if "unable to access dexscreener.com" in body or "got an error when visiting dexscreener.com" in body:
+             print(f"[Scraper] 🚨 BLOCKED DETECTED via Body Text")
+             return True
+             
+        return False
+        
+    except Exception as e:
+        print(f"[Scraper] Error checking for blocking: {e}")
+        return False
+
+
 def scrape_dexscreener_pairs() -> list[dict]:
     """
     Scrape the Dexscreener filtered page using robust link extraction.
@@ -88,6 +125,10 @@ def scrape_dexscreener_pairs() -> list[dict]:
     try:
         driver = create_driver()
         driver.get(DEXSCREENER_FILTER_URL)
+        
+        # Check for blocking immediately after load
+        if check_for_blocking(driver):
+            raise Exception("SCRAPER_BLOCKED")
         
         # Wait for content to load (wait for any link to appear)
         print("[Scraper] Waiting for page load...")

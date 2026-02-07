@@ -254,3 +254,24 @@ async def send_price_movement_alert(alert: dict) -> bool:
     except Exception as e:
         print(f"[TelegramAlerter] Error sending price alert: {e}")
         return False
+
+
+async def send_error_alert(message: str) -> bool:
+    """
+    Send a critical error alert (e.g., Scraper Blocked).
+    """
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return False
+        
+    try:
+        bot = Bot(token=TELEGRAM_BOT_TOKEN)
+        async with bot:
+            await bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text=f"🚨 **CRITICAL SYSTEM ALERT** 🚨\n\n{message}",
+                parse_mode="Markdown"
+            )
+        return True
+    except Exception as e:
+        print(f"[TelegramAlerter] Failed to send error alert: {e}")
+        return False

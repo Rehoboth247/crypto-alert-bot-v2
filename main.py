@@ -19,7 +19,7 @@ load_dotenv()
 # Using scraper instead of API for complete data
 from dex_scraper import get_new_filtered_tokens, get_token_info, save_token_to_db
 from narrative_analyzer import analyze_token_narrative
-from telegram_alerter import send_alert, send_startup_message, send_price_movement_alert
+from telegram_alerter import send_alert, send_startup_message, send_price_movement_alert, send_error_alert
 from token_db import get_seen_count, clear_expired_tokens
 from price_tracker import check_all_price_movements
 from telegram_commands import run_command_listener
@@ -163,7 +163,20 @@ async def run_check() -> None:
         print(f"[Main] Total tokens in database: {seen_count}")
         
     except Exception as e:
-        print(f"[Main] Error in check: {e}")
+        error_msg = str(e)
+        print(f"[Main] Error in check: {error_msg}")
+        
+        # Check for blocking signal
+        if "SCRAPER_BLOCKED" in error_msg:
+            print("[Main] 🚨 CRITICAL: Scraper blocked! Sending alert...")
+            await send_error_alert(
+                "⚠️ **SCRAPER BLOCKED** ⚠️\n\n"
+                "The bot has detected a WAF/Cloudflare block on DexScreener.\n"
+                "Scraping is paused for this cycle.\n\n"
+                "**Action Required:**\n"
+                "1. Check the logs.\n"
+                "2. You may need to update the User-Agent or wait/rotate IP."
+            )
 
 
 async def main() -> None:
