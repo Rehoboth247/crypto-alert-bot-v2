@@ -14,7 +14,15 @@ import time
 import re
 from typing import Optional
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from token_db import is_token_seen, mark_token_seen
+
+# HTTP session with automatic retries
+_session = requests.Session()
+_retry = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+_session.mount("https://", HTTPAdapter(max_retries=_retry))
+_session.mount("http://", HTTPAdapter(max_retries=_retry))
 
 # The Dexscreener filter URL
 DEXSCREENER_FILTER_URL = (
@@ -64,7 +72,7 @@ def create_driver():
     options.add_experimental_option("useAutomationExtension", False)
     
     # 4. Use a realistic User-Agent
-    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36")
     
     driver = webdriver.Chrome(options=options)
     
@@ -144,7 +152,7 @@ def scrape_dexscreener_pairs() -> list[dict]:
             WebDriverWait(driver, 20).until(
                 EC.presence_of_element_located((By.TAG_NAME, "a"))
             )
-        except:
+        except Exception:
             print("[Scraper] Warning: Timeout waiting for page content")
         
         # Scroll to load more tokens
@@ -204,7 +212,7 @@ def scrape_dexscreener_pairs() -> list[dict]:
                             "name": "",      # Will be filled by API
                             "href": href
                         })
-            except Exception as e:
+            except Exception:
                 continue
                 
         print(f"[Scraper] Extracted {len(pairs)} unique pairs")
@@ -212,12 +220,15 @@ def scrape_dexscreener_pairs() -> list[dict]:
         
     except Exception as e:
         print(f"[Scraper] Error: {e}")
+        # Re-raise critical errors so main.py can send Telegram alerts
+        if "SCRAPER_BLOCKED" in str(e) or "session not created" in str(e) or "Chrome" in str(e):
+            raise
         return []
     finally:
         if driver:
             try:
                 driver.quit()
-            except:
+            except Exception:
                 pass
 
 
@@ -227,7 +238,7 @@ def get_pair_details(chain: str, pair_address: str) -> Optional[dict]:
     """
     try:
         url = f"https://api.dexscreener.com/latest/dex/pairs/{chain}/{pair_address}"
-        response = requests.get(url, timeout=30)
+        response = _session.get(url, timeout=30)
         response.raise_for_status()
         data = response.json()
         
@@ -247,7 +258,7 @@ def get_best_pair_for_token(token_address: str) -> Optional[dict]:
     """
     try:
         url = f"https://api.dexscreener.com/latest/dex/tokens/{token_address}"
-        response = requests.get(url, timeout=30)
+        response = _session.get(url, timeout=30)
         response.raise_for_status()
         data = response.json()
         
@@ -268,7 +279,7 @@ def get_token_profile(chain: str, token_address: str) -> Optional[dict]:
     """Check if token has a Dexscreener profile and get Twitter link."""
     try:
         url = f"https://api.dexscreener.com/latest/dex/tokens/{token_address}"
-        response = requests.get(url, timeout=30)
+        response = _session.get(url, timeout=30)
         response.raise_for_status()
         data = response.json()
         
@@ -282,7 +293,7 @@ def get_token_profile(chain: str, token_address: str) -> Optional[dict]:
                 "imageUrl": info.get("imageUrl", "")
             }
         return None
-    except:
+    except Exception:
         return None
 
 

@@ -87,51 +87,62 @@ async def check_price_milestones(token: dict, current_price: float) -> list[dict
     if alert_price <= 0 or current_price <= 0:
         return alerts
     
-    milestones_hit = token.get("milestones_hit", "")
-    price_change = (current_price - alert_price) / alert_price
+    milestones_hit_str = token.get("milestones_hit", "")
+    hit_set = set(milestones_hit_str.split(",")) if milestones_hit_str else set()
     multiplier = current_price / alert_price
+    price_change = (current_price - alert_price) / alert_price
     
-    # Check gain milestones
+    # Collect all NEW milestones hit this tick
+    new_milestones = []
     for milestone_name, threshold in MILESTONES.items():
-        if milestone_name not in milestones_hit and multiplier >= threshold:
-            print(f"[PriceTracker] 🚀 Milestone {milestone_name} hit for {token.get('symbol')}!")
-            
-            # Enrich with full token data for the alert
-            chain = token.get("chain", "solana")
-            address = token.get("token_address", "")
-            
-            # Fetch fresh details using proper token endpoint
-            pair_data = get_best_pair_for_token(address)
-            
-            if pair_data:
-                # Mock enrich structure for get_token_info
-                enriched = {
-                    "pair": pair_data,
-                    "profile": {
-                        "chainId": chain,
-                        "tokenAddress": address,
-                        "url": pair_data.get("url", ""),
-                        "links": pair_data.get("info", {}).get("socials", []) or []
-                    }
-                }
-                full_info = get_token_info(enriched)
-            else:
-                full_info = token # Fallback
-            
-            # Run AI Analysis
-            analysis = await analyze_token_narrative(full_info)
-            
-            alerts.append({
-                "type": "gain",
-                "milestone": milestone_name,
-                "token": full_info,
-                "analysis": analysis,
-                "alert_price": alert_price,
-                "current_price": current_price,
-                "multiplier": multiplier,
-                "change_percent": price_change * 100
-            })
-            update_milestone_hit(token["token_address"], milestone_name)
+        if milestone_name not in hit_set and multiplier >= threshold:
+            new_milestones.append(milestone_name)
+    
+    if not new_milestones:
+        return alerts
+    
+    # Fetch data ONCE for all milestones
+    chain = token.get("chain", "solana")
+    address = token.get("token_address", "")
+    
+    pair_data = get_best_pair_for_token(address)
+    if pair_data:
+        enriched = {
+            "pair": pair_data,
+            "profile": {
+                "chainId": chain,
+                "tokenAddress": address,
+                "url": pair_data.get("url", ""),
+                "links": pair_data.get("info", {}).get("socials", []) or []
+            }
+        }
+        full_info = get_token_info(enriched)
+    else:
+        # Fallback: use DB data but add dexscreener_url
+        full_info = dict(token)
+        full_info["dexscreener_url"] = f"https://dexscreener.com/{chain}/{address}"
+    
+    # Run AI analysis ONCE
+    analysis = await analyze_token_narrative(full_info)
+    
+    # Use the HIGHEST milestone hit for the alert
+    best_milestone = new_milestones[-1]  # Last = highest since MILESTONES is ordered
+    print(f"[PriceTracker] 🚀 Milestone {best_milestone} hit for {token.get('symbol')}!")
+    
+    alerts.append({
+        "type": "gain",
+        "milestone": best_milestone,
+        "token": full_info,
+        "analysis": analysis,
+        "alert_price": alert_price,
+        "current_price": current_price,
+        "multiplier": multiplier,
+        "change_percent": price_change * 100
+    })
+    
+    # Record ALL milestones as hit
+    for m in new_milestones:
+        update_milestone_hit(token["token_address"], m)
     
     return alerts
 

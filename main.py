@@ -1,15 +1,15 @@
 """
-Crypto Alert Bot - Main Entry Point
+Crypto Alert Bot V3 - Main Entry Point
 
-Monitors Dexscreener for new tokens every 2 hours,
-analyzes their narrative, and sends alerts to Telegram.
-Each token is tracked for 24 hours then auto-removed (no midnight reset).
+Monitors Dexscreener for new tokens every 1 hour (silent discovery),
+tracks them for 7 days, and sends alerts on price milestones (+50%, 2x, 5x, 10x).
 """
 
 import asyncio
+import concurrent.futures
 import os
 import signal
-from datetime import datetime, timedelta, time as dt_time
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -28,9 +28,8 @@ from telegram_commands import run_command_listener
 POLL_INTERVAL_HOURS = 1  # Poll every 1 hour (24 times per day)
 TOKEN_EXPIRY_HOURS = 168  # Track each token for 7 days (168h)
 
-# Poll times in UTC (every hour)
-# Since we poll every hour, we just need a list of 0-23
-POLL_TIMES = list(range(24))
+# Thread pool for running blocking I/O (scraper, API calls)
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
 # Graceful shutdown flag
 shutdown_event = asyncio.Event()
@@ -63,12 +62,11 @@ async def process_token(token_data: dict) -> None:
 
 async def poll_loop() -> None:
     """
-    Main polling loop that checks for new tokens every 2 hours.
-    Polls at fixed times: 00:00, 02:00, 04:00, ... 22:00 WAT
-    Each token tracked for 24 hours then auto-removed (no midnight reset).
+    Main polling loop. Checks for new tokens every hour.
+    Tokens tracked for 7 days then auto-removed.
     """
     print(f"[Main] Starting polling loop (interval: {POLL_INTERVAL_HOURS} hours)")
-    print(f"[Main] Fixed poll times (UTC): {POLL_TIMES}")
+    print(f"[Main] Polling every {POLL_INTERVAL_HOURS} hour(s)")
     print(f"[Main] Token tracking: {TOKEN_EXPIRY_HOURS}h per-token expiry (no midnight reset)")
     print(f"[Main] Price milestones: 2x, 5x, 10x alerts enabled")
     print(f"[Main] Filters: minLiq$60k, minMcap$300k, min24hVol$2M, min24hChg20%, min6hChg5%")
@@ -102,29 +100,10 @@ async def poll_loop() -> None:
 
 def get_next_poll_time() -> datetime:
     """
-    Calculate the next scheduled poll time.
-    Returns the next time from POLL_TIMES that's in the future.
+    Calculate the next hourly poll time.
     """
     now = datetime.now()
-    today = now.date()
-    tomorrow = today + timedelta(days=1)
-    
-    # Build list of all upcoming poll times (today and tomorrow)
-    upcoming_times = []
-    
-    for hour in POLL_TIMES:
-        # Today's poll time
-        poll_time_today = datetime.combine(today, dt_time(hour=hour, minute=0, second=0))
-        if poll_time_today > now:
-            upcoming_times.append(poll_time_today)
-        
-        # Tomorrow's poll time (for wrap-around)
-        poll_time_tomorrow = datetime.combine(tomorrow, dt_time(hour=hour, minute=0, second=0))
-        upcoming_times.append(poll_time_tomorrow)
-    
-    # Sort and return the earliest future time
-    upcoming_times.sort()
-    return upcoming_times[0] if upcoming_times else datetime.combine(tomorrow, dt_time(hour=POLL_TIMES[0], minute=0, second=0))
+    return now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
 
 
 async def run_check() -> None:
@@ -137,8 +116,9 @@ async def run_check() -> None:
         # Clean up expired tokens (24h per-token expiry)
         clear_expired_tokens(hours=TOKEN_EXPIRY_HOURS)
         
-        # Check for new tokens
-        new_tokens = get_new_filtered_tokens()
+        # Run blocking scraper in thread executor to avoid freezing Telegram commands
+        loop = asyncio.get_event_loop()
+        new_tokens = await loop.run_in_executor(_executor, get_new_filtered_tokens)
         
         if new_tokens:
             print(f"[Main] Found {len(new_tokens)} new token(s) matching criteria")

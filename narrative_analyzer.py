@@ -10,7 +10,7 @@ import requests
 from typing import Optional
 
 try:
-    from ddgs import DDGS
+    from duckduckgo_search import DDGS
 except ImportError:
     DDGS = None
 
@@ -140,7 +140,7 @@ SUMMARY: [One sentence about what this token is]"""
                 data = response.json()
                 analysis_text = data["choices"][0]["message"]["content"].strip()
                 return parse_llm_response(analysis_text)
-            except:
+            except Exception:
                 pass
         
         print(f"[NarrativeAnalyzer] Groq API error: {e}")
@@ -177,14 +177,18 @@ def parse_llm_response(response_text: str) -> dict:
 async def analyze_token_narrative(token_info: dict) -> dict:
     """
     Full narrative analysis pipeline for a token.
+    Runs blocking I/O in an executor to avoid freezing the event loop.
     """
+    import asyncio
+    
     symbol = token_info.get("symbol", "")
     name = token_info.get("name", "")
     
     print(f"[NarrativeAnalyzer] Searching for {symbol} ({name}) on Twitter...")
-    search_results = search_twitter_mentions(symbol, name)
+    loop = asyncio.get_event_loop()
+    search_results = await loop.run_in_executor(None, search_twitter_mentions, symbol, name)
     
     print(f"[NarrativeAnalyzer] Analyzing with Groq (Llama 3.1)...")
-    analysis = analyze_with_groq(token_info, search_results)
+    analysis = await loop.run_in_executor(None, analyze_with_groq, token_info, search_results)
     
     return analysis
