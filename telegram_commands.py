@@ -85,6 +85,7 @@ async def run_command_listener():
         print("[Commands] Warning: TELEGRAM_BOT_TOKEN not set, commands disabled")
         return
     
+    app = None
     try:
         # Create application
         app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
@@ -97,11 +98,26 @@ async def run_command_listener():
         print("[Commands] Starting command listener...")
         await app.initialize()
         await app.start()
-        await app.updater.start_polling(drop_pending_updates=True)
+        await app.updater.start_polling(
+            drop_pending_updates=True,
+            allowed_updates=["message"],
+        )
         
         # Keep running until stopped
         while True:
             await asyncio.sleep(1)
             
+    except asyncio.CancelledError:
+        print("[Commands] Command listener cancelled, shutting down...")
     except Exception as e:
         print(f"[Commands] Error in command listener: {e}")
+    finally:
+        # Graceful shutdown to prevent Telegram conflict on redeploy
+        if app:
+            try:
+                await app.updater.stop()
+                await app.stop()
+                await app.shutdown()
+                print("[Commands] Command listener stopped cleanly.")
+            except Exception as e:
+                print(f"[Commands] Error during shutdown: {e}")

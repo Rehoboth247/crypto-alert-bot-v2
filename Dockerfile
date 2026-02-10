@@ -38,6 +38,8 @@ RUN mkdir -p /app/data
 # Environment variables
 ENV PYTHONUNBUFFERED=1
 ENV DB_PATH=/app/data/tokens.db
+ENV DBUS_SESSION_BUS_ADDRESS=/dev/null
+ENV CHROME_FLAGS="--disable-dev-shm-usage --no-sandbox"
 
 # Command to run the bot
 CMD ["python", "main.py"]

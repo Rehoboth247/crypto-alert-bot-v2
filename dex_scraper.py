@@ -44,11 +44,19 @@ def create_driver():
     # 1. Use the new Headless mode (indistinguishable from headful in many cases)
     options.add_argument("--headless=new")
     
-    # 2. Standard Linux/Docker flags
+    # 2. Standard Linux/Docker flags (critical for Railway's constrained containers)
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
+    options.add_argument("--single-process")
+    options.add_argument("--disable-software-rasterizer")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-background-networking")
+    options.add_argument("--disable-default-apps")
+    options.add_argument("--no-first-run")
+    options.add_argument("--disable-setuid-sandbox")
+    options.add_argument("--remote-debugging-pipe")
     
     # 3. Critical: Disable automation flags
     options.add_argument("--disable-blink-features=AutomationControlled")
