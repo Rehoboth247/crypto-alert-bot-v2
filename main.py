@@ -166,16 +166,28 @@ async def run_check() -> None:
         error_msg = str(e)
         print(f"[Main] Error in check: {error_msg}")
         
-        # Check for blocking signal
+        # Classify error and send appropriate alert
         if "SCRAPER_BLOCKED" in error_msg:
-            print("[Main] 🚨 CRITICAL: Scraper blocked! Sending alert...")
             await send_error_alert(
                 "⚠️ **SCRAPER BLOCKED** ⚠️\n\n"
-                "The bot has detected a WAF/Cloudflare block on DexScreener.\n"
+                "DexScreener WAF/Cloudflare block detected.\n"
                 "Scraping is paused for this cycle.\n\n"
-                "**Action Required:**\n"
-                "1. Check the logs.\n"
-                "2. You may need to update the User-Agent or wait/rotate IP."
+                "**Action:** Check logs or wait for IP rotation."
+            )
+        elif "session not created" in error_msg or "Chrome" in error_msg:
+            await send_error_alert(
+                "💀 **CHROME CRASHED** 💀\n\n"
+                "The Selenium Chrome browser failed to start.\n"
+                f"Error: `{error_msg[:200]}`\n\n"
+                "**Action:** The bot will retry next cycle.\n"
+                "If this keeps happening, a redeploy may be needed."
+            )
+        else:
+            await send_error_alert(
+                f"❌ **BOT ERROR** ❌\n\n"
+                f"An unexpected error occurred during the check cycle.\n"
+                f"Error: `{error_msg[:200]}`\n\n"
+                "**Action:** Check Railway logs for details."
             )
 
 
