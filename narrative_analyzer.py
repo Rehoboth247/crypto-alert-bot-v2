@@ -10,7 +10,7 @@ import requests
 from typing import Optional
 
 try:
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS
 except ImportError:
     DDGS = None
 
