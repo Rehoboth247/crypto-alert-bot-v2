@@ -420,12 +420,16 @@ def get_token_info(enriched_data: dict) -> dict:
             twitter_url = link.get("url")
             break
     
+    # Get token image URL from pair info
+    image_url = pair.get("info", {}).get("imageUrl", "")
+    
     return {
         "name": name,
         "symbol": symbol,
         "chain": chain_id,
         "address": token_address,
         "twitter_url": twitter_url,
+        "image_url": image_url,
         "liquidity_usd": liquidity,
         "market_cap": market_cap,
         "volume_24h": volume_24h,

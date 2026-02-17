@@ -241,7 +241,28 @@ async def send_price_movement_alert(alert: dict) -> bool:
     
     try:
         bot = Bot(token=TELEGRAM_BOT_TOKEN)
+        image_url = token.get("image_url", "")
+        
         async with bot:
+            if image_url:
+                # Send alert as photo with caption (1024 char limit)
+                caption = message
+                if len(caption) > 1024:
+                    caption = caption[:1020] + "..."
+                try:
+                    await bot.send_photo(
+                        chat_id=TELEGRAM_CHAT_ID,
+                        photo=image_url,
+                        caption=caption,
+                        parse_mode="Markdown",
+                    )
+                    print(f"[TelegramAlerter] {milestone} photo alert sent for {symbol}")
+                    return True
+                except Exception as photo_err:
+                    print(f"[TelegramAlerter] Photo failed ({photo_err}), falling back to text")
+                    # Fall through to text-only below
+            
+            # Text-only fallback (no image or photo failed)
             await bot.send_message(
                 chat_id=TELEGRAM_CHAT_ID,
                 text=message,
