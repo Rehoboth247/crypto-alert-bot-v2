@@ -10,6 +10,8 @@ from typing import Optional, Dict, List
 from token_db import get_tokens_for_price_tracking, update_milestone_hit
 from narrative_analyzer import analyze_token_narrative
 from dex_scraper import get_pair_details, get_token_info, get_best_pair_for_token
+from analyzer import SmartMoneyAnalyzer
+from birdeye_client import Chain
 
 # Price movement thresholds
 MILESTONES = {
@@ -125,15 +127,25 @@ async def check_price_milestones(token: dict, current_price: float) -> list[dict
     # Run AI analysis ONCE
     analysis = await analyze_token_narrative(full_info)
     
+    # Run Smart Money Scan
+    smart_count = 0
+    try:
+        chain_enum = Chain(chain)
+        analyzer = SmartMoneyAnalyzer()
+        smart_count = analyzer.count_smart_wallets_in_token(address, chain_enum, limit=100)
+    except Exception as e:
+        print(f"[PriceTracker] Smart Money scan error: {e}")
+    
     # Use the HIGHEST milestone hit for the alert
     best_milestone = new_milestones[-1]  # Last = highest since MILESTONES is ordered
-    print(f"[PriceTracker] 🚀 Milestone {best_milestone} hit for {token.get('symbol')}!")
+    print(f"[PriceTracker] 🚀 Milestone {best_milestone} hit for {token.get('symbol')}! Smart Wallets: {smart_count}")
     
     alerts.append({
         "type": "gain",
         "milestone": best_milestone,
         "token": full_info,
         "analysis": analysis,
+        "smart_wallets": smart_count,
         "alert_price": alert_price,
         "current_price": current_price,
         "multiplier": multiplier,
