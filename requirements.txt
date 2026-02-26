@@ -3,3 +3,4 @@ python-telegram-bot>=20.7
 python-dotenv>=1.0.0
 selenium>=4.15.0
 ddgs>=6.0.0
+colorama>=0.4.6

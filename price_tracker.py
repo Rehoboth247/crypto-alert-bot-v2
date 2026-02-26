@@ -127,9 +127,11 @@ async def check_price_milestones(token: dict, current_price: float) -> list[dict
     # Run AI analysis ONCE
     analysis = await analyze_token_narrative(full_info)
     
-    # Run Smart Money Scan
+    # Run Smart Money Scan (delay 30s to avoid clashing with other bot sharing same API keys)
     smart_count = 0
     try:
+        print(f"[PriceTracker] Waiting 30s before Smart Money scan to avoid API conflicts...")
+        await asyncio.sleep(30)
         chain_enum = Chain(chain)
         analyzer = SmartMoneyAnalyzer()
         smart_count = analyzer.count_smart_wallets_in_token(address, chain_enum, limit=100)

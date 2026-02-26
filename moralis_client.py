@@ -73,6 +73,9 @@ class MoralisClient:
             cursor = data.get("cursor")
             if not cursor:
                 break  # No more pages
+
+            # Delay between pages to avoid rate limits (shared API key with other bot)
+            time.sleep(3)
                 
         # API doesn't guarantee strict sorting by balance for every network
         # Fallback sorting just in case

@@ -10,8 +10,11 @@ MORALIS_API_KEY = os.getenv("MORALIS_API_KEY", "")
 BIRDEYE_BASE_URL = "https://public-api.birdeye.so"
 
 # Rate Limiting: Standard package = 1 Request Per Second
-REQUEST_DELAY_SECONDS = 1.2  # Slightly over 1s for safety
-REQUEST_DELAY_SECONDS = 1.2  # Slightly over 1s for safety
+# Increased to 3s because two bots share the same API keys
+REQUEST_DELAY_SECONDS = 3.0
+
+# Delay before starting a smart money scan to stagger with the other bot
+SMART_MONEY_SCAN_DELAY = 30
 
 # ─── Smart Money Criteria ────────────────────────────────────────
 # A wallet in the token's top traders is considered "Smart Money" if:
