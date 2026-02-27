@@ -4,8 +4,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ─── API Configuration ───────────────────────────────────────────
-BIRDEYE_API_KEY = os.getenv("BIRDEYE_API_KEY", "")
-MORALIS_API_KEY = os.getenv("MORALIS_API_KEY", "")
+BIRDEYE_API_KEY = os.getenv("BIRDEYE_API_KEY", "").strip()
+MORALIS_API_KEY = os.getenv("MORALIS_API_KEY", "").strip()
 
 BIRDEYE_BASE_URL = "https://public-api.birdeye.so"
 
