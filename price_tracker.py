@@ -127,16 +127,25 @@ async def check_price_milestones(token: dict, current_price: float) -> list[dict
     # Run AI analysis ONCE
     analysis = await analyze_token_narrative(full_info)
     
-    # Run Smart Money Scan (delay 30s to avoid clashing with other bot sharing same API keys)
+    # Run Smart Money Scan with retry logic
     smart_count = 0
-    try:
-        print(f"[PriceTracker] Waiting 30s before Smart Money scan to avoid API conflicts...")
-        await asyncio.sleep(30)
-        chain_enum = Chain(chain)
-        analyzer = SmartMoneyAnalyzer()
-        smart_count = analyzer.count_smart_wallets_in_token(address, chain_enum, limit=100)
-    except Exception as e:
-        print(f"[PriceTracker] Smart Money scan error: {e}")
+    max_retries = 2
+    for attempt in range(1, max_retries + 1):
+        try:
+            delay = 15 if attempt == 1 else 30
+            print(f"[PriceTracker] Smart Money scan attempt {attempt}/{max_retries} "
+                  f"(waiting {delay}s to avoid API conflicts)...")
+            await asyncio.sleep(delay)
+            chain_enum = Chain(chain)
+            analyzer = SmartMoneyAnalyzer()
+            smart_count = analyzer.count_smart_wallets_in_token(address, chain_enum, limit=100)
+            print(f"[PriceTracker] ✅ Smart Money scan succeeded: {smart_count} wallet(s) found")
+            break  # Success, stop retrying
+        except Exception as e:
+            print(f"[PriceTracker] ⚠️ Smart Money scan attempt {attempt} failed: {e}")
+            if attempt == max_retries:
+                print(f"[PriceTracker] ❌ Smart Money scan failed after {max_retries} attempts")
+                smart_count = -1  # Distinguish failed scan from 'zero found'
     
     # Use the HIGHEST milestone hit for the alert
     best_milestone = new_milestones[-1]  # Last = highest since MILESTONES is ordered

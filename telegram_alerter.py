@@ -182,6 +182,7 @@ async def send_price_movement_alert(alert: dict) -> bool:
     milestone = alert.get("milestone", "")
     change_percent = alert.get("change_percent", 0)
     smart_wallets = alert.get("smart_wallets", 0)
+    smart_display = "N/A (scan failed)" if smart_wallets < 0 else f"{smart_wallets} (Top 100)"
     
     # Analysis Fields
     narrative = analysis.get("narrative", "Unknown")
@@ -228,7 +229,7 @@ async def send_price_movement_alert(alert: dict) -> bool:
 🟢 **Gain:** +{change_percent:.0f}%
 
 💰 Liq: {liq_str} | MC: {mcap_str}
-🕵️ Smart Holders: {smart_wallets} (Top 100)
+🕵️ Smart Holders: {smart_display}
 
 📖 Narrative: {narrative}
 🧠 Verdict: {verdict}
