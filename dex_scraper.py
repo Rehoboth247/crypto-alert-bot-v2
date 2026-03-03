@@ -14,6 +14,7 @@ from selenium.webdriver.support import expected_conditions as EC
 import time
 import re
 from typing import Optional
+from selenium_stealth import stealth
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -78,6 +79,16 @@ def create_driver():
     options.binary_location = "/usr/bin/chromium"
     service = Service("/usr/bin/chromedriver")
     driver = webdriver.Chrome(service=service, options=options)
+    
+    # Inject selenium-stealth to bypass Cloudflare WAF
+    stealth(driver,
+        languages=["en-US", "en"],
+        vendor="Google Inc.",
+        platform="Win32",
+        webgl_vendor="Intel Inc.",
+        renderer="Intel Iris OpenGL Engine",
+        fix_hairline=True,
+    )
     
     # 5. execute_cdp_cmd: The Magic Bullet
     # This prevents the website from checking `navigator.webdriver` via JavaScript
